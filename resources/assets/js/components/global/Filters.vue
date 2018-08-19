@@ -90,57 +90,11 @@
       }
     }
 
-    div.brew-method{
-      font-size: 16px;
-      color: #666666;
-      font-family: "Lato", sans-serif;
-      border-radius: 4px;
-      background-color: #F9F9FA;
-      width: 150px;
-      height: 57px;
-      float: left;
-      margin-right: 10px;
-      margin-bottom: 10px;
-      padding: 5px;
-      cursor: pointer;
-      position: relative;
-
-      &.active{
-        color: white;
-        background-color: $secondary-color;
-      }
-
-      div.brew-method-container{
-        position: absolute;
-        top: 50%;
-        transform: translateY(-50%);
-
-        img.brew-method-icon{
-          display: inline-block;
-          margin-right: 10px;
-          margin-left: 5px;
-          width: 20px;
-          max-height: 30px;
-        }
-
-        span.brew-method-name{
-          display: inline-block;
-          width: calc( 100% - 40px);
-          vertical-align: middle;
-        }
-      }
-    }
-
     span.liked-location-label{
       color: #666666;
       font-size: 16px;
       font-family: "Lato", sans-serif;
       margin-left: 10px;
-    }
-
-    div.cafe-grid-container{
-      overflow: auto;
-      padding-bottom: 10px;
     }
 
     div.close-filters{
@@ -176,10 +130,6 @@
 
       span.clear-filters{
         display: block;
-      }
-
-      div.cafe-grid-container{
-        height: inherit;
       }
 
       div.close-filters{
@@ -249,19 +199,35 @@
 
         <div class="grid-x grid-padding-x">
           <div class="large-12 medium-12 small-12 cell" >
-            <div class="brew-method" v-on:click="toggleBrewMethodFilter( method.id )" v-for="method in brewMethods" v-if="method.cafes_count > 0" v-bind:class="{'active': brewMethodsFilter.indexOf( method.id ) >= 0 }">
-              <div class="brew-method-container">
-                <img v-bind:src="method.icon+'.svg'" class="brew-method-icon"/> <span class="brew-method-name">{{ method.method }}</span>
+            <div class="brew-method option" v-on:click="toggleBrewMethodFilter( method.id )" v-for="method in brewMethods" v-if="method.cafes_count > 0" v-bind:class="{'active': brewMethodsFilter.indexOf( method.id ) >= 0 }">
+              <div class="option-container">
+                <img v-bind:src="method.icon+'.svg'" class="option-icon"/> <span class="option-name">{{ method.method }}</span>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div class="grid-x grid-padding-x cafe-grid-container" id="cafe-grid">
-        <cafe-card v-for="cafe in cafes" :key="cafe.id" :cafe="cafe"></cafe-card>
-        <div class="large-12 medium-12 small-12 cell">
-          <span class="no-results" v-if="shownCount == 0">No Results</span>
+      <div id="drink-options-container">
+        <div class="grid-x grid-padding-x">
+          <div class="large-12 medium-12 small-12 cell">
+            <label class="filter-label">Drink Options</label>
+          </div>
+        </div>
+
+        <div class="grid-x grid-padding-x">
+          <div class="large-12 medium-12 small-12 cell">
+            <div class="drink-option option" v-on:click="toggleMatchaFilter()" v-bind:class="{'active':hasMatcha}">
+              <div class="option-container">
+                <img src="/img/icons/matcha-latte.svg" class="option-icon"/> <span class="option-name">Matcha</span>
+              </div>
+            </div>
+            <div class="drink-option option" v-on:click="toggleTeaFilter()" v-bind:class="{'active':hasTea}">
+              <div class="option-container">
+                <img src="/img/icons/tea-bag.svg" class="option-icon"/> <span class="option-name">Tea</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -275,11 +241,14 @@
   */
   import { EventBus } from '../../event-bus.js';
 
+  /*
+    Imports the cafe card component.
+  */
   import CafeCard from '../../components/cafes/CafeCard.vue';
 
   export default {
     /*
-
+      Defines the data used by the component.
     */
     data(){
       return {
@@ -287,75 +256,144 @@
         activeLocationFilter: 'all',
         onlyLiked: false,
         brewMethodsFilter: [],
-        shownCount: 1
+        hasMatcha: false,
+        hasTea: false
       }
     },
 
+    /*
+      Defines the watchers used by the component.
+    */
     watch: {
+      /*
+        Watch the text search variable
+      */
       textSearch(){
         this.updateFilterDisplay();
       },
 
+      /*
+        Watch the active location filter
+      */
       activeLocationFilter(){
         this.updateFilterDisplay();
       },
 
+      /*
+        Watch the only liked filter.
+      */
       onlyLiked(){
         this.updateFilterDisplay();
       },
 
+      /*
+        Watch the brew methods filter.
+      */
       brewMethodsFilter(){
         this.updateFilterDisplay();
       },
 
-      showFilters(){
-        this.computeHeight();
+      /*
+        Watch the has matcha filter.
+      */
+      hasMatcha(){
+        this.updateFilterDisplay();
+      },
+
+      /*
+        Watch the has tea filter.
+      */
+      hasTea(){
+        this.updateFilterDisplay();
       }
     },
 
+    /*
+      Registers the components with the component.
+    */
     components: {
       CafeCard
     },
 
-
+    /*
+      Defines the mounted lifecycle hook.
+    */
     mounted(){
+      /*
+        When the user wants to show the filters, we show the filter
+        sidebar.
+      */
       EventBus.$on('show-filters', function(){
         this.show = true;
       }.bind(this));
 
+      /*
+        When the user clears the filters, we clear all set filters.
+      */
       EventBus.$on('clear-filters', function(){
         this.clearFilters();
       }.bind(this));
     },
 
+    /*
+      Defines the computed properties on the component.
+    */
     computed: {
+      /*
+        Gets the show filters data from the state.
+      */
       showFilters(){
         return this.$store.getters.getShowFilters;
       },
 
+      /*
+        Gets the brew methods from the state.
+      */
       brewMethods(){
         return this.$store.getters.getBrewMethods;
       },
 
+      /*
+        Gets the cafes from the state.
+      */
       cafes(){
         return this.$store.getters.getCafes;
       },
 
+      /*
+        Gets the user from the state.
+      */
       user(){
         return this.$store.getters.getUser;
       },
 
+      /*
+        Gets the user load status from the state.
+      */
       userLoadStatus(){
         return this.$store.getters.getUserLoadStatus();
       }
     },
 
+    /*
+      Defines the methods on the compnent.
+    */
     methods: {
+      /*
+        Sets the active location filter.
+      */
       setActiveLocationFilter( filter ){
         this.activeLocationFilter = filter;
       },
 
+      /*
+        Toggle the brew method filter.
+      */
       toggleBrewMethodFilter( id ){
+        /*
+          If the filter is in the selected filter, we remove it, otherwise
+          we add it.
+        */
         if( this.brewMethodsFilter.indexOf( id ) >= 0 ){
           this.brewMethodsFilter.splice( this.brewMethodsFilter.indexOf( id ), 1 );
         }else{
@@ -363,40 +401,51 @@
         }
       },
 
+      /*
+        Update filtered cafes when the filters have changed.
+      */
       updateFilterDisplay(){
         EventBus.$emit('filters-updated', {
           text: this.textSearch,
           type: this.activeLocationFilter,
           liked: this.onlyLiked,
-          brewMethods: this.brewMethodsFilter
-        });
-
-        this.$nextTick(function(){
-          this.computeShown();
+          brewMethods: this.brewMethodsFilter,
+          matcha: this.hasMatcha,
+          tea: this.hasTea
         });
       },
 
-      computeShown(){
-        this.shownCount = $('.cafe-card-container').filter(function() {
-              return $(this).css('display') !== 'none';
-          }).length;
-      },
-
-      computeHeight(){
-        let filtersHeight = $('#filters-container').height();
-
-        $('#cafe-grid').css('height', ( filtersHeight - 460 ) + 'px' );
-      },
-
+      /*
+        Toggle the show and hide of filter sidebar.
+      */
       toggleShowFilters(){
         this.$store.dispatch( 'toggleShowFilters', { showFilters : !this.showFilters } );
       },
 
+      /*
+        Toggle the matcha filter.
+      */
+      toggleMatchaFilter(){
+        this.hasMatcha = !this.hasMatcha;
+      },
+
+      /*
+        Toggle the tea filter.
+      */
+      toggleTeaFilter(){
+        this.hasTea = !this.hasTea;
+      },
+
+      /*
+        Clear all of the filters.
+      */
       clearFilters(){
         this.textSearch = '';
         this.activeLocationFilter = 'all';
         this.onlyLiked = false;
         this.brewMethodsFilter = [];
+        this.hasMatcha = false;
+        this.hasTea = false;
       }
     }
   }

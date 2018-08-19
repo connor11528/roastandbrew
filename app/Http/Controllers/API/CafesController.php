@@ -1,20 +1,32 @@
 <?php
-
+/*
+	Defines the namespace for the controller.
+*/
 namespace App\Http\Controllers\API;
 
+/*
+	Uses the controller interface
+*/
 use App\Http\Controllers\Controller;
 
+/*
+	Defines the models used by the controller.
+*/
 use App\Models\Company;
 use App\Models\Cafe;
 use App\Models\CafePhoto;
+use App\Models\Action;
 
-use App\Utilities\GoogleMaps;
+/*
+	Defines the utilities used by the controller.
+*/
 use App\Utilities\Tagger;
 
-use Request;
-use Auth;
-use DB;
-use File;
+/*
+	Defines the services used by the controller.
+*/
+use App\Services\CafeService;
+use App\Services\ActionService;
 
 /*
 	Defines the requests used by the controller.
@@ -22,6 +34,18 @@ use File;
 use App\Http\Requests\StoreCafeRequest;
 use App\Http\Requests\EditCafeRequest;
 
+/*
+	Defines the facades used by the controller.
+*/
+use Request;
+use Auth;
+use DB;
+use File;
+
+/**
+ * Defines the Cafes Controller. This handles all the routes
+ * relating to the cafes.
+ */
 class CafesController extends Controller
 {
   /*
@@ -49,14 +73,14 @@ class CafesController extends Controller
   |-------------------------------------------------------------------------------
   | Get An Individual Cafe
   |-------------------------------------------------------------------------------
-  | URL:            /api/v1/cafes/{id}
+  | URL:            /api/v1/cafes/{slug}
   | Method:         GET
   | Description:    Gets an individual cafe
   | Parameters:
-  |   $id   -> ID of the cafe we are retrieving
+  |   $slug   -> Unique Slug of the cafe we are retrieving
   */
-  public function getCafe( $id ){
-    $cafe = Cafe::where('id', '=', $id)
+  public function getCafe( $slug ){
+    $cafe = Cafe::where('slug', '=', $slug)
 								->with('brewMethods')
 								->withCount('userLike')
 								->with('tags')
@@ -68,6 +92,10 @@ class CafesController extends Controller
 								->first();
 
 
+		/*
+			If the cafe is not null, return the cafe otherwise return
+			a 404 error.
+		*/
 		if( $cafe != null ){
 			return response()->json( $cafe );
 		}else{
@@ -80,17 +108,17 @@ class CafesController extends Controller
 	|-------------------------------------------------------------------------------
 	| Gets Editing Data for an Individual Cafe
 	|-------------------------------------------------------------------------------
-	| URL:            /api/v1/cafes/{id}/edit
+	| URL:            /api/v1/cafes/slug}/edit
 	| Method:         GET
 	| Description:    Gets an individual cafe's edit data
 	| Parameters:
-	|   $id   -> ID of the cafe we are retrieving
+	|   $slug  -> Unique slug of the cafe we are retrieving
 	*/
-	public function getCafeEditData( $cafeID ){
+	public function getCafeEditData( $slug ){
 		/*
 			Grab the cafe with the parent of the cafe
 		*/
-		$cafe = Cafe::where('id', '=', $cafeID)
+		$cafe = Cafe::where('slug', '=', $slug)
 								->with('brewMethods')
 								->withCount('userLike')
 								->with(['company' => function( $query ){
@@ -114,161 +142,146 @@ class CafesController extends Controller
   | Description:    Adds a new cafe to the application
   */
   public function postNewCafe( StoreCafeRequest $request ){
+		/*
+			Gets company that's adding the cafe
+		*/
 		$companyID = $request->get('company_id');
 
-		if( $companyID != '' ){
-			$company = Company::where('id', '=', $companyID)->first();
+		/*
+			Get the company. If its null, create a new company otherwise
+			set to the company that exists.
+		*/
+		$company = Company::where('id', '=', $companyID)->first();
+		$company = $company == null ? new Company() : $company;
+
+		/*
+			Determines if the user can create a cafe or not.
+			If the user can create a cafe, then we let them otherwise
+			we create an add cafe action.
+		*/
+		if( Auth::user()->can('create', [ Cafe::class, $company ] ) ){
+			$cafe = CafeService::addCafe( $request->all(), Auth::user()->id );
+
+			/*
+				Create an already processed and approved action for the
+				user since they have permission.
+			*/
+			ActionService::createApprovedAction( null, $cafe->company_id, 'cafe-added', $request->all() );
+
+			/*
+				Grab the company to return
+			*/
+			$company = Company::where('id', '=', $cafe->company_id)
+												->with('cafes')
+												->first();
+
+			/*
+				Return the added cafes as JSON
+			*/
+			return response()->json( $company, 201);
 		}else{
-			$company = new Company();
+			/*
+				Create a new cafe action and save all of the data
+				that the user has provided
+			*/
+			ActionService::createPendingAction( null, $request->get('company_id'), 'cafe-added', $request->all() );
 
-			$company->name 				= $request->get('company_name');
-			$company->roaster			= $request->get('company_type') == 'roaster' ? 1 : 0;
-			$company->website 		= $request->get('website');
-			$company->logo 				= '';
-			$company->description = '';
-			$company->added_by 		= Auth::user()->id;
-
-			$company->save();
+			/*
+				Return the flag that the cafe addition is pending
+			*/
+			return response()->json( ['cafe_add_pending' => $request->get('company_name') ], 202 );
 		}
-
-		$address 			= $request->get('address');
-		$city 				= $request->get('city');
-		$state 				= $request->get('state');
-		$zip 					= $request->get('zip');
-		$locationName = $request->get('location_name');
-		$brewMethods 	= json_decode( $request->get('brew_methods') );
-
-		$lat = Request::get('lat') != '' ? Request::get('lat') : 0;
-		$lng = Request::get('lng') != '' ? Request::get('lng') : 0;
-
-		if( $lat == 0 && $lng == 0 ){
-			$coordinates = GoogleMaps::geocodeAddress( $address, $city, $state, $zip );
-			$lat = $coordinates['lat'];
-			$lng = $coordinates['lng'];
-		}
-
-		$cafe = new Cafe();
-
-		$cafe->company 					= $company->id;
-		$cafe->location_name 		= $locationName != null ? $locationName : '';
-		$cafe->address 					= $address;
-		$cafe->city 						= $city;
-		$cafe->state 						= $state;
-		$cafe->zip 							= $zip;
-		$cafe->latitude 				= $lat;
-		$cafe->longitude 				= $lng;
-		$cafe->added_by 				= Auth::user()->id;
-		$cafe->deleted 					= 0;
-
-		$cafe->save();
-
-		/*
-			Attach the brew methods
-		*/
-		$cafe->brewMethods()->sync( $brewMethods );
-
-		$company = Company::where('id', '=', $company->id)
-											->with('cafes')
-											->first();
-
-		/*
-			Return the added cafes as JSON
-		*/
-    return response()->json( $company, 201);
   }
 
 	/*
 	|-------------------------------------------------------------------------------
 	| Edits a Cafe
 	|-------------------------------------------------------------------------------
-	| URL:            /api/v1/cafes/{cafeID}
+	| URL:            /api/v1/cafes/{slug}
 	| Method:         PUT
 	| Description:    Edits a cafe
 	*/
-	public function putEditCafe( $cafeID, EditCafeRequest $request ){
-		$companyID = $request->get('company_id');
-
-		if( $companyID != '' ){
-	    $company = Company::where('id', '=', $companyID)->first();
-
-			$company->name 				= $request->get('company_name');
-	    $company->roaster			= $request->get('company_type') == 'roaster' ? 1 : 0;
-	    $company->website 		= $request->get('website');
-	    $company->logo 				= '';
-	    $company->description = '';
-
-			$company->save();
-	  }else{
-	    $company = new Company();
-
-	    $company->name 				= $request->get('company_name');
-	    $company->roaster			= $request->get('company_type') == 'roaster' ? 1 : 0;
-	    $company->website 		= $request->get('website');
-	    $company->logo 				= '';
-	    $company->description = '';
-	    $company->added_by 		= Auth::user()->id;
-
-	    $company->save();
-	  }
-
-		$address 			= $request->get('address');
-	  $city 				= $request->get('city');
-	  $state 				= $request->get('state');
-	  $zip 					= $request->get('zip');
-	  $locationName = $request->get('location_name');
-	  $brewMethods 	= json_decode( $request->get('brew_methods') );
-
-	  $lat = Request::get('lat') != '' ? Request::get('lat') : 0;
-	  $lng = Request::get('lng') != '' ? Request::get('lng') : 0;
-
-	  if( $lat == 0 && $lng == 0 ){
-	    $coordinates = GoogleMaps::geocodeAddress( $address, $city, $state, $zip );
-	    $lat = $coordinates['lat'];
-	    $lng = $coordinates['lng'];
-	  }
-
-		$cafe = Cafe::where('id', '=', $cafeID)->first();
-
-		$cafe->company 					= $company->id;
-	  $cafe->location_name 		= $locationName != null ? $locationName : '';
-	  $cafe->address 					= $address;
-	  $cafe->city 						= $city;
-	  $cafe->state 						= $state;
-	  $cafe->zip 							= $zip;
-	  $cafe->latitude 				= $lat;
-	  $cafe->longitude 				= $lng;
-	  $cafe->added_by 				= Auth::user()->id;
-
-	  $cafe->save();
+	public function putEditCafe( $slug, EditCafeRequest $request ){
+		/*
+			Grab the cafe to be edited.
+		*/
+		$cafe = Cafe::where('slug', '=', $slug)->with('brewMethods')->first();
 
 		/*
-	    Attach the brew methods
-	  */
-	  $cafe->brewMethods()->sync( $brewMethods );
+			Confirms user can edit the cafe through the Cafes Policy
+		*/
+		if( Auth::user()->can('update', $cafe ) ){
+			/*
+				Get the company ID to check and see if the company
+				exists.
+			*/
+			$companyID = $request->get('company_id');
 
-	  $company = Company::where('id', '=', $company->id)
-	                    ->with('cafes')
-	                    ->first();
+			/*
+				Set the before cafe to the data that was existing,
+				and the after to what was set.
+			*/
+			$content['before'] 			= $cafe;
+			$content['after'] 			= $request->all();
 
-	  /*
-	    Return the edited cafes as JSON
-	  */
-	  return response()->json( $company, 200);
+			/*
+				Create a new cafe action and save the action for an
+				admin to approve.
+			*/
+			ActionService::createApprovedAction( $cafe->id, $cafe->company_id, 'cafe-updated', $content );
+
+			$updatedCafe = CafeService::editCafe( $cafe->id, $request->all() );
+
+			/*
+				Load the company and return it.
+			*/
+		  $company = Company::where('id', '=', $updatedCafe->company_id)
+		                    ->with('cafes')
+		                    ->first();
+
+		  /*
+		    Return the edited cafes as JSON
+		  */
+		  return response()->json( $company, 200);
+		}else{
+			/*
+				Grab the cafe being updated
+			*/
+			$cafe = Cafe::where('slug', '=', $slug)->with('company')->first();
+
+			/*
+				Set the before cafe to the data that was existing,
+				and the after to what was set.
+			*/
+			$content['before'] 			= $cafe;
+			$content['after'] 			= $request->all();
+
+			/*
+				Create a new cafe action and save the action for an
+				admin to approve.
+			*/
+			ActionService::createPendingAction( $cafe->id, $cafe->company_id, 'cafe-updated', $content );
+
+			/*
+				Return a flag for cafe updates pending
+			*/
+			return response()->json( ['cafe_updates_pending' => $request->get('company_name') ], 202 );
+		}
 	}
 
 	/*
   |-------------------------------------------------------------------------------
   | Likes a Cafe
   |-------------------------------------------------------------------------------
-  | URL:            /api/v1/cafes/{id}/like
+  | URL:            /api/v1/cafes/{slug}/like
   | Method:         POST
   | Description:    Likes a cafe for the authenticated user.
   */
-	public function postLikeCafe( $cafeID ){
+	public function postLikeCafe( $slug ){
 		/*
 			Gets the cafe the user is liking
 		*/
-		$cafe = Cafe::where('id', '=', $cafeID)->first();
+		$cafe = Cafe::where('slug', '=', $slug)->first();
 
 		/*
 			Checks to see if the user already likes the cafe
@@ -294,15 +307,15 @@ class CafesController extends Controller
   |-------------------------------------------------------------------------------
   | Un-Likes a Cafe
   |-------------------------------------------------------------------------------
-  | URL:            /api/v1/cafes/{id}/like
+  | URL:            /api/v1/cafes/{slug}/like
   | Method:         DELETE
   | Description:    Un-Likes a cafe for the authenticated user.
   */
-	public function deleteLikeCafe( $cafeID ){
+	public function deleteLikeCafe( $slug ){
 		/*
 			Gets the cafe the user is liking
 		*/
-		$cafe = Cafe::where('id', '=', $cafeID)->first();
+		$cafe = Cafe::where('slug', '=', $slug)->first();
 
 		/*
 			Detaches the user from the cafe's likes
@@ -319,12 +332,12 @@ class CafesController extends Controller
 	|-------------------------------------------------------------------------------
 	| Adds Tags To A Cafe
 	|-------------------------------------------------------------------------------
-	| URL:            /api/v1/cafes/{id}/tags
+	| URL:            /api/v1/cafes/{slug}/tags
 	| Controller:     API\CafesController@postAddTags
 	| Method:         POST
 	| Description:    Adds tags to a cafe for a user
 	*/
-	public function postAddTags( $cafeID ){
+	public function postAddTags( $slug ){
 		/*
 			Grabs the tags array from the request
 		*/
@@ -333,7 +346,7 @@ class CafesController extends Controller
 		/*
 			Gets the cafe
 		*/
-		$cafe = Cafe::where('id', '=', $cafeID)->first();
+		$cafe = Cafe::where('slug', '=', $slug)->first();
 
 		/*
 			Tags the cafe
@@ -343,7 +356,7 @@ class CafesController extends Controller
 		/*
 			Grabs the cafe with the brew methods, user like and tags
 		*/
-		$cafe = Cafe::where('id', '=', $cafeID)
+		$cafe = Cafe::where('slug', '=', $slug)
 								->with('brewMethods')
 								->with('userLike')
 								->with('tags')
@@ -359,15 +372,16 @@ class CafesController extends Controller
 	|-------------------------------------------------------------------------------
 	| Deletes A Cafe Tag
 	|-------------------------------------------------------------------------------
-	| URL:            /api/v1/cafes/{id}/tags/{tagID}
+	| URL:            /api/v1/cafes/{slug}/tags/{tagID}
 	| Method:         DELETE
 	| Description:    Deletes a tag from a cafe for a user
 	*/
-	public function deleteCafeTag( $cafeID, $tagID ){
+	public function deleteCafeTag( $slug, $tagID ){
+		$cafe = Cafe::where('slug', '=', $slug)->first();
 		/*
 			Delete the specific users tag for the cafe.
 		*/
-		DB::statement('DELETE FROM cafes_users_tags WHERE cafe_id = "'.$cafeID.'" AND tag_id = "'.$tagID.'" AND user_id = "'.Auth::user()->id.'"');
+		DB::statement('DELETE FROM cafes_users_tags WHERE cafe_id = "'.$cafe->id.'" AND tag_id = "'.$tagID.'" AND user_id = "'.Auth::user()->id.'"');
 
 		/*
 			Return a proper response code for successful untagging
@@ -375,13 +389,50 @@ class CafesController extends Controller
 		return response(null, 204);
 	}
 
-	public function deleteCafe( $cafeID ){
-		$cafe = Cafe::where('id', '=', $cafeID)->first();
+	/*
+  |-------------------------------------------------------------------------------
+  | Deletes A Cafe
+  |-------------------------------------------------------------------------------
+  | URL:            /api/v1/cafes/{slug}
+  | Method:         DELETE
+  | Description:    Deletes a cafe
+  */
+	public function deleteCafe( $slug ){
+		/*
+			Grabs the Cafe to be deleted
+		*/
+		$cafe = Cafe::where('slug', '=', $slug)->first();
 
-		$cafe->deleted = 1;
+		/*
+			Checks if the user can delete the cafe through
+			our CafePolicy.
+		*/
+		if( Auth::user()->can('delete', $cafe ) ){
+			$cafe->deleted = 1;
 
-		$cafe->save();
+			$cafe->save();
 
-		return response()->json('', 204);
+			/*
+				Creates an action that tracks and approves a cafe deletion.
+			*/
+			ActionService::createApprovedAction( $cafe->id, $cafe->company_id, 'cafe-deleted', '' );
+
+			return response()->json('', 204);
+		}else{
+			/*
+				Get the cafe to create the action.
+			*/
+			$cafe = Cafe::where('slug', '=', $slug)->with('company')->first();
+
+			/*
+				Creates an action that tracks and approves a cafe deletion.
+			*/
+			ActionService::createPendingAction( $cafe->id, $cafe->company_id, 'cafe-deleted', '' );
+
+			/*
+				Return the cafe delete pending
+			*/
+			return response()->json( ['cafe_delete_pending' => $cafe->company->name ], 202 );
+		}
 	}
 }

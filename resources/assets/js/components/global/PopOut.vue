@@ -65,6 +65,11 @@
     <transition name="slide-in-right">
       <div class="pop-out-side-bar" v-show="showRightNav" v-on:click.stop>
         <img src="/img/close-menu.svg" class="close-menu-icon" v-on:click="hideNav()"/>
+        <div class="side-bar-link">
+          <router-link :to="{ name: 'cafes' }" v-on:click.native="hideNav()">
+            Cafes
+          </router-link>
+        </div>
         <div class="side-bar-link" v-if="user != '' && userLoadStatus == 2">
           <router-link :to="{ name: 'newcafe' }" v-on:click.native="hideNav()">
             Add Cafe
@@ -75,8 +80,17 @@
             My Profile
           </router-link>
         </div>
+        <div class="side-bar-link" v-if="user != '' && userLoadStatus == 2 && user.permission >= 1">
+          <router-link :to="{ name: 'admin'}" v-on:click.native="hideNav()">
+            Admin
+          </router-link>
+        </div>
         <div class="side-bar-link">
-          <a href="https://github.com/serversideup/roastandbrew/issues/new" target="_blank">
+          <a v-if="user != '' && userLoadStatus == 2" v-show="userLoadStatus == 2" v-on:click="logout()">Sign Out</a>
+          <a v-if="user == ''" v-on:click="login()">Sign In</a>
+        </div>
+        <div class="side-bar-link">
+          <a href="https://github.com/serversideup/roastandbrew/issues/new/choose" target="_blank">
             Report a Bug
           </a>
         </div>
@@ -86,13 +100,14 @@
           </a>
         </div>
         <div class="side-bar-link">
-          <a v-if="user != '' && userLoadStatus == 2" v-show="userLoadStatus == 2" v-on:click="logout()">Sign Out</a>
-          <a v-if="user == ''" v-on:click="login()">Sign In</a>
+          <a href="https://github.com/serversideup/roastandbrew" target="_blank">
+            View on Github
+          </a>
         </div>
 
         <div class="ssu-container">
           <span class="ssu-built-on">Learn how this app was built on</span>
-          <a href="https://serversideup.net/series/api-driven-development-laravel-vuejs/" target="_blank">
+          <a href="https://serversideup.net/courses/api-driven-development-laravel-vuejs/" target="_blank">
             <img src="/img/ssu-logo.png"/>
           </a>
         </div>
@@ -102,14 +117,26 @@
 </template>
 
 <script>
+  /*
+    Imports the event bus.
+  */
   import { EventBus } from '../../event-bus.js';
 
   export default {
+    /*
+      Defines the computed properties.
+    */
     computed: {
+      /*
+        Gets whether or not the popout should be shown or not.
+      */
       showPopOut(){
         return this.$store.getters.getShowPopOut;
       },
 
+      /*
+        Determines if we should show the popout.
+      */
       showRightNav(){
         return this.showPopOut;
       },
@@ -129,16 +156,28 @@
       }
     },
 
+    /*
+      Defines the methods used by the component.
+    */
     methods: {
+      /*
+        Toggles the hiding if the navigation.
+      */
       hideNav(){
         this.$store.dispatch( 'toggleShowPopOut', { showPopOut: false } );
       },
 
+      /*
+        hides the popout and shows the log in form.
+      */
       login(){
         this.$store.dispatch( 'toggleShowPopOut', { showPopOut: false } );
         EventBus.$emit('prompt-login');
       },
 
+      /*
+        Logs the user out.
+      */
       logout(){
         this.$store.dispatch( 'logoutUser' );
         window.location = '/logout';

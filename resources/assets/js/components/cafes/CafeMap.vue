@@ -67,11 +67,16 @@
 </template>
 
 <script>
+  /*
+    Imports the mixins used by the component.
+  */
   import { CafeTypeFilter } from '../../mixins/filters/CafeTypeFilter.js';
   import { CafeBrewMethodsFilter } from '../../mixins/filters/CafeBrewMethodsFilter.js';
   import { CafeTagsFilter } from '../../mixins/filters/CafeTagsFilter.js';
   import { CafeTextFilter } from '../../mixins/filters/CafeTextFilter.js';
   import { CafeUserLikeFilter } from '../../mixins/filters/CafeUserLikeFilter.js';
+  import { CafeHasMatchaFilter } from '../../mixins/filters/CafeHasMatchaFilter.js';
+  import { CafeHasTeaFilter } from '../../mixins/filters/CafeHasTeaFilter.js';
 
   /*
     Imports the Event Bus to pass updates.
@@ -79,6 +84,9 @@
   import { EventBus } from '../../event-bus.js';
 
   export default {
+    /*
+      Defines the properties used by the component.
+    */
     props: {
       'latitude': {
         type: Number,
@@ -100,20 +108,31 @@
       }
     },
 
+    /*
+      Defines the data used by the component.
+    */
     data(){
       return {
 
       }
     },
 
+    /*
+      Defines the mixins used by the component.
+    */
     mixins: [
       CafeTypeFilter,
       CafeBrewMethodsFilter,
       CafeTagsFilter,
       CafeTextFilter,
-      CafeUserLikeFilter
+      CafeUserLikeFilter,
+      CafeHasMatchaFilter,
+      CafeHasTeaFilter
     ],
 
+    /*
+      Defines the computed properties used by the component.
+    */
     computed: {
       /*
         Gets the cafes
@@ -123,6 +142,9 @@
       }
     },
 
+    /*
+      Defines the watched variables on the component.
+    */
     watch: {
       /*
         Watches the cafes. When they are updated, clear the markers
@@ -134,12 +156,23 @@
       }
     },
 
+    /*
+      Handles the mounted lifecycle hook.
+    */
     mounted(){
+      /*
+        Initializes the local markers array. This is not a reactive variable.
+      */
       this.$markers = [];
 
+      /*
+        Initializes the local map variable. This is not reactive variable
+      */
       this.$map = new google.maps.Map(document.getElementById('cafe-map'), {
         center: {lat: this.latitude, lng: this.longitude},
-        zoom: this.zoom
+        zoom: this.zoom,
+        fullscreenControl: false,
+        mapTypeControl: false
       });
 
       /*
@@ -155,6 +188,10 @@
         this.processFilters( filters );
       }.bind(this));
 
+      /*
+        Listen to the location-selected event to zoom into the appropriate
+        cafe.
+      */
       EventBus.$on('location-selected', function( cafe ){
         var latLng = new google.maps.LatLng( cafe.lat, cafe.lng );
         this.$map.setZoom( 17 );
@@ -162,6 +199,9 @@
       }.bind(this));
     },
 
+    /*
+      Defines the methods used by the component.
+    */
     methods: {
       /*
         Process filters on the map selected by the user.
@@ -171,8 +211,9 @@
           if( filters.text == ''
             && filters.type == 'all'
             && filters.brewMethods.length == 0
-            && !filters.liked  ){
-
+            && !filters.liked
+            && !filters.matcha
+            && !filters.tea ){
                 this.$markers[i].setMap( this.$map );
               }else{
                 /*
@@ -182,6 +223,8 @@
                 var brewMethodsPassed = false;
                 var typePassed = false;
                 var likedPassed = false;
+                var matchaPassed = false;
+                var teaPassed = false;
 
 
                 /*
@@ -219,9 +262,27 @@
                 }
 
                 /*
+                  Checks if the cafe passes matcha filter
+                */
+                if( filters.matcha && this.processCafeHasMatchaFilter( this.$markers[i].cafe ) ){
+                  matchaPassed = true;
+                }else if( !filters.matcha ){
+                  matchaPassed = true;
+                }
+
+                /*
+                  Checks if the cafe passes the tea filter
+                */
+                if( filters.tea && this.processCafeHasTeaFilter( this.$markers[i].cafe ) ){
+                  teaPassed = true;
+                }else if( !filters.tea ){
+                  teaPassed = true;
+                }
+
+                /*
                   If everything passes, then we show the Cafe Marker
                 */
-                if( typePassed && textPassed && brewMethodsPassed && likedPassed ){
+                if( typePassed && textPassed && brewMethodsPassed && likedPassed && matchaPassed && teaPassed ){
                   this.$markers[i].setMap( this.$map );
                 }else{
                   this.$markers[i].setMap( null );
@@ -269,7 +330,14 @@
           }
 
 
+          /*
+            If the cafe has a lat and lng, create a marker object and
+            show it on the map.
+          */
           if( this.cafes[i].latitude != null ){
+            /*
+              Create a new marker object.
+            */
             var marker = new google.maps.Marker({
               position: { lat: parseFloat( this.cafes[i].latitude ), lng: parseFloat( this.cafes[i].longitude ) },
               map: this.$map,
@@ -277,10 +345,14 @@
               cafe: this.cafes[i]
             });
 
+            /*
+              Localize the global router variable so when clicked, we go
+              to the cafe.
+            */
             let router = this.$router;
 
             marker.addListener('click', function() {
-              router.push( { name: 'cafe', params: { id: this.cafe.id } } );
+              router.push( { name: 'cafe', params: { slug: this.cafe.slug } } );
             });
 
             /*

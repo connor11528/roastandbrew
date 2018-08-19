@@ -47,69 +47,6 @@
       margin-bottom: 10px;
     }
 
-    div.location-type{
-      color: white;
-      font-family: "Lato", sans-serif;
-      font-size: 16px;
-      width: 105px;
-      height: 45px;
-      text-align: center;
-      line-height: 45px;
-      border-radius: 3px;
-
-      img{
-        margin-right: 5px;
-      }
-
-      &.roaster{
-        background-color: $secondary-color;
-      }
-
-      &.cafe{
-        background-color: #3D281E;
-
-        img{
-          margin-top: -6px;
-        }
-      }
-    }
-
-    div.brew-method{
-      font-size: 16px;
-      color: #666666;
-      font-family: "Lato", sans-serif;
-      border-radius: 4px;
-      background-color: #F9F9FA;
-      width: 150px;
-      height: 57px;
-      float: left;
-      margin-right: 10px;
-      margin-bottom: 10px;
-      padding: 5px;
-      cursor: pointer;
-      position: relative;
-
-      div.brew-method-container{
-        position: absolute;
-        top: 50%;
-        transform: translateY(-50%);
-
-        img.brew-method-icon{
-          display: inline-block;
-          margin-right: 10px;
-          margin-left: 5px;
-          width: 20px;
-          max-height: 30px;
-        }
-
-        span.brew-method-name{
-          display: inline-block;
-          width: calc( 100% - 40px);
-          vertical-align: middle;
-        }
-      }
-    }
-
     div.address-container{
       color: #666666;
       font-size: 18px;
@@ -203,9 +140,24 @@
     <div class="grid-x">
       <div class="large-12 medium-12 small-12 cell">
         <label class="cafe-label">Brew Methods</label>
-        <div class="brew-method" v-for="method in cafe.brew_methods">
-          <div class="brew-method-container">
-            <img v-bind:src="method.icon+'.svg'" class="brew-method-icon"/> <span class="brew-method-name">{{ method.method }}</span>
+        <div class="brew-method option" v-for="method in cafe.brew_methods">
+          <div class="option-container">
+            <img v-bind:src="method.icon+'.svg'" class="option-icon"/> <span class="option-name">{{ method.method }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="grid-x" v-if="cafe.matcha == 1 || cafe.tea == 1">
+      <div class="large-12 medium-12 small-12 cell">
+        <label class="cafe-label">Drink Options</label>
+        <div class="drink-option option" v-if="cafe.matcha == 1">
+          <div class="option-container">
+            <img v-bind:src="'/img/icons/matcha-latte.svg'" class="option-icon"/> <span class="option-name">Matcha</span>
+          </div>
+        </div>
+        <div class="drink-option option" v-if="cafe.tea == 1">
+          <div class="option-container">
+            <img v-bind:src="'/img/icons/tea-bag.svg'" class="option-icon"/> <span class="option-name">Tea</span>
           </div>
         </div>
       </div>
@@ -221,7 +173,7 @@
 
         <a class="cafe-website" target="_blank" v-bind:href="cafe.company.website">{{ cafe.company.website }}</a>
         <br>
-        <router-link :to="{ name: 'editcafe', params: { id: cafe.id } }" v-show="userLoadStatus == 2 && user != ''" class="suggest-cafe-edit">
+        <router-link :to="{ name: 'editcafe', params: { slug: cafe.slug } }" v-show="userLoadStatus == 2 && user != ''" class="suggest-cafe-edit">
           Suggest an edit
         </router-link>
         <a class="suggest-cafe-edit" v-if="userLoadStatus == 2 && user == ''" v-on:click="loginToEdit()">
@@ -233,6 +185,9 @@
 </template>
 
 <script>
+  /*
+    Imports the event bus
+  */
   import { EventBus } from '../event-bus.js';
 
   /*
@@ -257,24 +212,42 @@
       route parameter.
     */
     created(){
+      this.$store.dispatch( 'changeCafesView', 'map' );
       this.$store.dispatch( 'loadCafe', {
-        id: this.$route.params.id
+        slug: this.$route.params.slug
       });
     },
 
+    /*
+      Defines what to watch in the component.
+    */
     watch: {
-      '$route.params.id': function(){
+      /*
+        When the route changes, we clear the like and unlike
+        status and load the new cafe.
+      */
+      '$route.params.slug': function(){
         this.$store.dispatch( 'clearLikeAndUnlikeStatus' );
         this.$store.dispatch( 'loadCafe', {
-          id: this.$route.params.id
+          slug: this.$route.params.slug
         });
 			},
 
+      /*
+        Watch for when the cafe has been loaded successfully.
+      */
       'cafeLoadStatus': function(){
+        /*
+          If the cafe has been loaded successfully, zoom to the location.
+        */
         if( this.cafeLoadStatus == 2 ){
           EventBus.$emit('location-selected', { lat: parseFloat( this.cafe.latitude ), lng: parseFloat( this.cafe.longitude ) });
         }
 
+        /*
+          If the cafe has been loaded unsuccessfully, show an error and go
+          back to the cafes page.
+        */
         if( this.cafeLoadStatus == 3 ){
           EventBus.$emit('show-error', { notification: 'Cafe Not Found!'} );
           this.$router.push({ name: 'cafes' });
@@ -294,10 +267,16 @@
         return this.$store.getters.getCafeLoadStatus;
       },
 
+      /*
+        Gets the like cafe action status.
+      */
       cafeLikeActionStatus(){
         return this.$store.getters.getCafeLikeActionStatus;
       },
 
+      /*
+        Gets the unlike cafe action status
+      */
       cafeUnlikeActionStatus(){
         return this.$store.getters.getCafeUnlikeActionStatus;
       },

@@ -27,12 +27,12 @@
 </style>
 <template>
   <span class="toggle-like" v-show="userLoadStatus == 2 && user != ''">
-    <span class="like like-toggle" v-on:click="likeCafe( cafe.id )" v-if="!liked && cafeLoadStatus == 2 && cafeLikeActionStatus != 1 && cafeUnlikeActionStatus != 1">
+    <span class="like like-toggle" v-on:click="likeCafe( cafe.slug )" v-if="!liked && cafeLoadStatus == 2 && cafeLikeActionStatus != 1 && cafeUnlikeActionStatus != 1">
       <span class="image-container">
         <img src="/img/unliked.svg"/>
       </span> Like?
     </span>
-    <span class="un-like like-toggle" v-on:click="unlikeCafe( cafe.id )" v-if="liked && cafeLoadStatus == 2 && cafeLikeActionStatus != 1 && cafeUnlikeActionStatus != 1">
+    <span class="un-like like-toggle" v-on:click="unlikeCafe( cafe.slug )" v-if="liked && cafeLoadStatus == 2 && cafeLikeActionStatus != 1 && cafeUnlikeActionStatus != 1">
       <span class="image-container">
         <img src="/img/liked.svg"/>
       </span> Liked
@@ -48,13 +48,22 @@
   </span>
 </template>
 <script>
+  /*
+    Imports the loader component.
+  */
   import Loader from '../global/Loader.vue';
 
   export default {
+    /*
+      Registers all components with the component.
+    */
     components: {
       Loader
     },
 
+    /*
+      Defines the computed properties on the component.
+    */
     computed: {
       /*
         Retrieves the User Load Status from Vuex
@@ -106,16 +115,25 @@
       }
     },
 
+    /*
+      Defines the methods used by the component.
+    */
     methods: {
-      likeCafe( cafeID ){
+      /*
+        Like the cafe. Accepts a cafe slug as a parameter.
+      */
+      likeCafe( slug ){
         this.$store.dispatch( 'likeCafe', {
-          id: this.cafe.id
+          slug: this.cafe.slug
         });
       },
 
-      unlikeCafe( cafeID ){
+      /*
+        Unlike the cafe. Accepts a cafe slug as a parameter.
+      */
+      unlikeCafe( slug ){
         this.$store.dispatch( 'unlikeCafe', {
-          id: this.cafe.id
+          slug: this.cafe.slug
         });
       }
     }

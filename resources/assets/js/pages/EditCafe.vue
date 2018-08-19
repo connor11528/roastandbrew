@@ -59,17 +59,15 @@
       text-align: center;
       font-family: "Lato", sans-serif;
       font-size: 16px;
-      color: $secondary-color;
-      border-bottom: 1px solid $secondary-color;
-      border-top: 1px solid $secondary-color;
-      border-left: 1px solid $secondary-color;
-      border-right: 1px solid $secondary-color;
       width: 25%;
       display: inline-block;
       height: 55px;
       line-height: 55px;
       cursor: pointer;
       margin-bottom: 5px;
+      margin-right: 10px;
+      background-color: #EEE;
+      color: $black;
 
       &.active{
         color: white;
@@ -85,47 +83,6 @@
       &.cafe{
         border-top-right-radius: 3px;
         border-bottom-right-radius: 3px;
-      }
-    }
-
-    div.brew-method{
-      font-size: 16px;
-      color: #666666;
-      font-family: "Lato", sans-serif;
-      border-radius: 4px;
-      background-color: #F9F9FA;
-      width: 150px;
-      height: 57px;
-      float: left;
-      margin-right: 10px;
-      margin-bottom: 10px;
-      padding: 5px;
-      cursor: pointer;
-      position: relative;
-
-      &.active{
-        color: white;
-        background-color: $secondary-color;
-      }
-
-      div.brew-method-container{
-        position: absolute;
-        top: 50%;
-        transform: translateY(-50%);
-
-        img.brew-method-icon{
-          display: inline-block;
-          margin-right: 10px;
-          margin-left: 5px;
-          width: 20px;
-          max-height: 30px;
-        }
-
-        span.brew-method-name{
-          display: inline-block;
-          width: calc( 100% - 40px);
-          vertical-align: middle;
-        }
       }
     }
 
@@ -278,9 +235,30 @@
 
         <div class="grid-x grid-padding-x">
           <div class="large-8 medium-9 small-12 cell centered">
-            <div class="brew-method" v-on:click="toggleSelectedBrewMethod( method.id )" v-for="method in brewMethods" v-bind:class="{'active': brewMethodsSelected.indexOf( method.id ) >= 0 }">
-              <div class="brew-method-container">
-                <img v-bind:src="method.icon+'.svg'" class="brew-method-icon"/> <span class="brew-method-name">{{ method.method }}</span>
+            <div class="brew-method option" v-on:click="toggleSelectedBrewMethod( method.id )" v-for="method in brewMethods" v-bind:class="{'active': brewMethodsSelected.indexOf( method.id ) >= 0 }">
+              <div class="option-container">
+                <img v-bind:src="method.icon+'.svg'" class="option-icon"/> <span class="option-name">{{ method.method }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-x grid-padding-x">
+          <div class="large-8 medium-9 small-12 cell centered">
+            <label class="form-label">Drink Options Available</label>
+          </div>
+        </div>
+
+        <div class="grid-x grid-padding-x">
+          <div class="large-8 medium-9 small-12 cell centered">
+            <div class="drink-option option" v-on:click="matcha == 0 ? matcha = 1 : matcha = 0" v-bind:class="{'active': matcha == 1 }">
+              <div class="option-container">
+                <img v-bind:src="'/img/icons/matcha-latte.svg'" class="option-icon"/> <span class="option-name">Matcha</span>
+              </div>
+            </div>
+            <div class="drink-option option" v-on:click="tea == 0 ? tea = 1 : tea = 0" v-bind:class="{'active': tea == 1 }">
+              <div class="option-container">
+                <img v-bind:src="'/img/icons/tea-bag.svg'" class="option-icon"/> <span class="option-name">Tea Options</span>
               </div>
             </div>
           </div>
@@ -432,6 +410,8 @@
         lat: '',
         lng: '',
         brewMethodsSelected: [],
+        matcha: 0,
+        tea: 0,
 
         validations: {
           companyName: {
@@ -467,17 +447,34 @@
       Sync the tags to send to the server for the new cafe.
     */
     mounted(){
+      /*
+        Gets the autocomplete element and sets it up with Google places autocomplete.
+      */
       this.autocomplete = document.getElementById('street-address');
       let googleMapsAutocomplete = new google.maps.places.Autocomplete( this.autocomplete );
 
+      /*
+        Listen to when the place has changed.
+      */
       googleMapsAutocomplete.addListener( 'place_changed', function(){
+        /*
+          Get the place selected.
+        */
         let place = googleMapsAutocomplete.getPlace();
 
         let addressBuilderStreetNumber = '';
         let addressBuilderRoute = '';
 
+        /*
+          Find the address we need in the address components.
+        */
         for (var i = 0; i < place.address_components.length; i++) {
           let type = place.address_components[i].types[0];
+
+          /*
+            Switch the type of the address components and assign it to the
+            corresponding variable.
+          */
           switch( type ){
             case 'street_number':
               addressBuilderStreetNumber = place.address_components[i].short_name;
@@ -497,7 +494,14 @@
           }
         }
 
+        /*
+          Builds the local address format.
+        */
         this.address = addressBuilderStreetNumber+' '+addressBuilderRoute;
+
+        /*
+          Gets the latitude and longitude of the address.
+        */
         this.lat = place.geometry.location.lat();
         this.lng = place.geometry.location.lng();
 
@@ -509,7 +513,7 @@
     */
     created(){
       this.$store.dispatch( 'loadCafeEdit', {
-        id: this.$route.params.id
+        slug: this.$route.params.slug
       });
     },
 
@@ -530,8 +534,14 @@
       editCafe(){
         return this.$store.getters.getCafeEdit;
       },
+      editCafeText(){
+        return this.$store.getters.getCafeEditText;
+      },
       deleteCafeStatus(){
         return this.$store.getters.getCafeDeletedStatus;
+      },
+      deleteCafeText(){
+        return this.$store.getters.getCafeDeletedText;
       }
     },
 
@@ -541,7 +551,11 @@
     watch: {
       'editCafeStatus': function(){
         if( this.editCafeStatus == 2 ){
-          this.$router.push({ name: 'cafe', params: { id: this.$route.params.id }});
+          EventBus.$emit('show-success', {
+            notification: this.editCafeText
+          });
+
+          this.$router.push({ name: 'cafe', params: { slug: this.$route.params.slug }});
         }
       },
       'editCafeLoadStatus': function(){
@@ -554,7 +568,7 @@
           this.$router.push({ name: 'cafes' });
 
           EventBus.$emit('show-success', {
-            notification: 'Cafe deleted successfully!'
+            notification: this.deleteCafeText
           });
         }
       }
@@ -615,6 +629,8 @@
         this.zip            = this.editCafe.zip;
         this.lat            = this.editCafe.latitude;
         this.lng            = this.editCafe.longitude;
+        this.matcha         = this.editCafe.matcha;
+        this.tea            = this.editCafe.tea;
 
         for( let i = 0; i < this.editCafe.brew_methods.length; i++ ){
           this.brewMethodsSelected.push( this.editCafe.brew_methods[i].id );
@@ -631,7 +647,7 @@
       submitEditCafe(){
         if( this.validateEditCafe() ){
           this.$store.dispatch( 'editCafe', {
-            id: this.editCafe.id,
+            slug: this.editCafe.slug,
             company_name: this.companyName,
             company_id: this.companyID,
             company_type: this.companyType,
@@ -643,7 +659,9 @@
             zip: this.zip,
             lat: this.lat,
             lng: this.lng,
-            brew_methods: this.brewMethodsSelected
+            brew_methods: this.brewMethodsSelected,
+            matcha: this.matcha,
+            tea: this.tea
   				});
         }
       },
@@ -755,7 +773,7 @@
       deleteCafe(){
         if( confirm( 'Are you sure you want to delete this cafe?' ) ){
           this.$store.dispatch( 'deleteCafe', {
-            cafe_id: this.editCafe.id
+            slug: this.editCafe.slug
           } );
         }
       },
@@ -776,6 +794,8 @@
         this.state                = '';
         this.zip                  = '';
         this.brewMethodsSelected  = [];
+        this.matcha               = 0;
+        this.tea                  = 0;
 
 
         this.validations = {
